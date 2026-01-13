@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "webpack serve --config webpack.config.cjs --mode development --port 5176",
     "build": "webpack --config webpack.config.cjs --mode production",
-    "typecheck": "tsc --noEmit -p tsconfig.webpack.json"
+    "typecheck": "tsc --noEmit -p tsconfig.webpack.json",
+    "test": "npm run typecheck"
   },
   "dependencies": {
     "@prantlf/railroad-diagrams": "^1.0.1",
@@ -25,5 +26,8 @@
     "webpack": "^5.104.1",
     "webpack-cli": "^6.0.1",
     "webpack-dev-server": "^5.2.3"
+  },
+  "overrides": {
+    "js-yaml": "3.14.2"
   }
 }
