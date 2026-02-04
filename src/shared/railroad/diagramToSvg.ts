@@ -7,8 +7,7 @@ export function diagramToSvgString(diagram: any): string {
       if (typeof svg === "string") return svg;
       // If it's an Element/Node, serialize it.
       if (svg && typeof svg === "object" && "nodeType" in svg) {
-        // @ts-expect-error: DOM types at runtime
-        const el: Element = svg;
+        const el = svg as Element;
         return el.outerHTML ?? new XMLSerializer().serializeToString(el);
       }
       return "<!-- toSVG() returned unexpected value -->";

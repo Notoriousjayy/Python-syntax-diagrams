@@ -1,59 +1,65 @@
-// python-syntax-diagrams.ts
+// pythonGrammar.ts
 //
-// ES module that defines the Python grammar as railroad diagrams.
-// Based on the Python PEG grammar (Grammar/python.gram) from CPython.
-// Many rules are rendered in diagram-friendly equivalent form.
+// Railroad diagram factories for Python 3.14 PEG grammar.
+// Uses @prantlf/railroad-diagrams library for SVG generation.
 
-import * as RR from "@prantlf/railroad-diagrams/lib/index.mjs";
+import rr from "@prantlf/railroad-diagrams";
 
-// Convenience wrappers
-function callOrNew(Ctor: any, ...args: any[]): any {
-  try {
-    return Ctor(...args);
-  } catch (e: any) {
-    if (e instanceof TypeError && /without 'new'/.test(e.message)) {
-      return new Ctor(...args);
-    }
-    throw e;
-  }
-}
+const {
+  Diagram,
+  Sequence,
+  Choice,
+  Optional,
+  ZeroOrMore,
+  OneOrMore,
+  Terminal,
+  NonTerminal,
+  Comment,
+  Skip,
+  Group,
+} = rr;
 
-// Wrapped primitives
-const Diagram    = (...a: any[]) => callOrNew(RR.Diagram, ...a);
-const Sequence   = (...a: any[]) => callOrNew(RR.Sequence, ...a);
-const Choice     = (...a: any[]) => callOrNew(RR.Choice, ...a);
-const Optional   = (...a: any[]) => callOrNew(RR.Optional, ...a);
-const OneOrMore  = (...a: any[]) => callOrNew(RR.OneOrMore, ...a);
-const ZeroOrMore = (...a: any[]) => callOrNew(RR.ZeroOrMore, ...a);
-const Terminal   = (...a: any[]) => callOrNew(RR.Terminal, ...a);
-const NonTerminal = (...a: any[]) => callOrNew(RR.NonTerminal, ...a);
-const Stack      = (...a: any[]) => callOrNew(RR.Stack, ...a);
-const Comment    = (...a: any[]) => callOrNew(RR.Comment, ...a);
+// Helper functions for readability
+const T = (text: string) => Terminal(text);
+const NT = (name: string) => NonTerminal(name);
+const Opt = Optional;
+const Star = ZeroOrMore;
+const Plus = OneOrMore;
+const Seq = Sequence;
+const Or = Choice;
 
-const T  = (s: string) => Terminal(s);
-const NT = (s: string) => NonTerminal(s);
-const K  = (s: string) => Terminal(s); // Keyword (single quotes in PEG)
-const SK = (s: string) => Terminal(s); // Soft keyword (double quotes in PEG)
+// Rule name type
+export type RuleName = string;
 
-// --- Grammar rules (diagram factories) ----------------------------------------
+// Map of all diagram factories
+const rules = new Map<RuleName, () => ReturnType<typeof Diagram>>();
 
-const rules = new Map<string, () => any>();
-
-// ===== STARTING RULES =====
+// ============================================================================
+// STARTING RULES
+// ============================================================================
 
 rules.set("file", () =>
   Diagram(
-    Sequence(Optional(NT("statements")), T("ENDMARKER"))
+    Sequence(
+      Optional(NT("statements")),
+      T("ENDMARKER")
+    )
   )
 );
 
 rules.set("interactive", () =>
-  Diagram(NT("statement_newline"))
+  Diagram(
+    NT("statement_newline")
+  )
 );
 
 rules.set("eval", () =>
   Diagram(
-    Sequence(NT("expressions"), ZeroOrMore(T("NEWLINE")), T("ENDMARKER"))
+    Sequence(
+      NT("expressions"),
+      ZeroOrMore(T("NEWLINE")),
+      T("ENDMARKER")
+    )
   )
 );
 
@@ -71,10 +77,14 @@ rules.set("func_type", () =>
   )
 );
 
-// ===== GENERAL STATEMENTS =====
+// ============================================================================
+// GENERAL STATEMENTS
+// ============================================================================
 
 rules.set("statements", () =>
-  Diagram(OneOrMore(NT("statement")))
+  Diagram(
+    OneOrMore(NT("statement"))
+  )
 );
 
 rules.set("statement", () =>
@@ -86,10 +96,16 @@ rules.set("statement", () =>
   )
 );
 
+rules.set("single_compound_stmt", () =>
+  Diagram(
+    NT("compound_stmt")
+  )
+);
+
 rules.set("statement_newline", () =>
   Diagram(
     Choice(0,
-      Sequence(NT("compound_stmt"), T("NEWLINE")),
+      Sequence(NT("single_compound_stmt"), T("NEWLINE")),
       NT("simple_stmts"),
       T("NEWLINE"),
       T("ENDMARKER")
@@ -102,8 +118,7 @@ rules.set("simple_stmts", () =>
     Choice(0,
       Sequence(NT("simple_stmt"), T("NEWLINE")),
       Sequence(
-        NT("simple_stmt"),
-        ZeroOrMore(Sequence(T(";"), NT("simple_stmt"))),
+        OneOrMore(NT("simple_stmt"), T(";")),
         Optional(T(";")),
         T("NEWLINE")
       )
@@ -147,12 +162,19 @@ rules.set("compound_stmt", () =>
   )
 );
 
-// ===== SIMPLE STATEMENTS =====
+// ============================================================================
+// SIMPLE STATEMENTS
+// ============================================================================
 
 rules.set("assignment", () =>
   Diagram(
     Choice(0,
-      Sequence(T("NAME"), T(":"), NT("expression"), Optional(Sequence(T("="), NT("annotated_rhs")))),
+      Sequence(
+        T("NAME"),
+        T(":"),
+        NT("expression"),
+        Optional(Sequence(T("="), NT("annotated_rhs")))
+      ),
       Sequence(
         Choice(0,
           Sequence(T("("), NT("single_target"), T(")")),
@@ -167,59 +189,83 @@ rules.set("assignment", () =>
         NT("annotated_rhs"),
         Optional(T("TYPE_COMMENT"))
       ),
-      Sequence(NT("single_target"), NT("augassign"), NT("annotated_rhs"))
+      Sequence(
+        NT("single_target"),
+        NT("augassign"),
+        NT("annotated_rhs")
+      )
     )
   )
 );
 
 rules.set("annotated_rhs", () =>
   Diagram(
-    Choice(0, NT("yield_expr"), NT("star_expressions"))
+    Choice(0,
+      NT("yield_expr"),
+      NT("star_expressions")
+    )
   )
 );
 
 rules.set("augassign", () =>
   Diagram(
     Choice(0,
-      T("+="), T("-="), T("*="), T("@="), T("/="), T("%="),
-      T("&="), T("|="), T("^="), T("<<="), T(">>="), T("**="), T("//=")
+      T("+="),
+      T("-="),
+      T("*="),
+      T("@="),
+      T("/="),
+      T("%="),
+      T("&="),
+      T("|="),
+      T("^="),
+      T("<<="),
+      T(">>="),
+      T("**="),
+      T("//=")
     )
   )
 );
 
 rules.set("return_stmt", () =>
   Diagram(
-    Sequence(K("return"), Optional(NT("star_expressions")))
+    Sequence(
+      T("return"),
+      Optional(NT("star_expressions"))
+    )
   )
 );
 
 rules.set("raise_stmt", () =>
   Diagram(
     Choice(0,
-      Sequence(K("raise"), NT("expression"), Optional(Sequence(K("from"), NT("expression")))),
-      K("raise")
+      Sequence(
+        T("raise"),
+        NT("expression"),
+        Optional(Sequence(T("from"), NT("expression")))
+      ),
+      T("raise")
     )
   )
 );
 
 rules.set("pass_stmt", () =>
-  Diagram(K("pass"))
+  Diagram(T("pass"))
 );
 
 rules.set("break_stmt", () =>
-  Diagram(K("break"))
+  Diagram(T("break"))
 );
 
 rules.set("continue_stmt", () =>
-  Diagram(K("continue"))
+  Diagram(T("continue"))
 );
 
 rules.set("global_stmt", () =>
   Diagram(
     Sequence(
-      K("global"),
-      T("NAME"),
-      ZeroOrMore(Sequence(T(","), T("NAME")))
+      T("global"),
+      OneOrMore(T("NAME"), T(","))
     )
   )
 );
@@ -227,16 +273,18 @@ rules.set("global_stmt", () =>
 rules.set("nonlocal_stmt", () =>
   Diagram(
     Sequence(
-      K("nonlocal"),
-      T("NAME"),
-      ZeroOrMore(Sequence(T(","), T("NAME")))
+      T("nonlocal"),
+      OneOrMore(T("NAME"), T(","))
     )
   )
 );
 
 rules.set("del_stmt", () =>
   Diagram(
-    Sequence(K("del"), NT("del_targets"))
+    Sequence(
+      T("del"),
+      NT("del_targets")
+    )
   )
 );
 
@@ -247,24 +295,32 @@ rules.set("yield_stmt", () =>
 rules.set("assert_stmt", () =>
   Diagram(
     Sequence(
-      K("assert"),
+      T("assert"),
       NT("expression"),
       Optional(Sequence(T(","), NT("expression")))
     )
   )
 );
 
-// ===== IMPORT STATEMENTS =====
+// ============================================================================
+// IMPORT STATEMENTS
+// ============================================================================
 
 rules.set("import_stmt", () =>
   Diagram(
-    Choice(0, NT("import_name"), NT("import_from"))
+    Choice(0,
+      NT("import_name"),
+      NT("import_from")
+    )
   )
 );
 
 rules.set("import_name", () =>
   Diagram(
-    Sequence(K("import"), NT("dotted_as_names"))
+    Sequence(
+      T("import"),
+      NT("dotted_as_names")
+    )
   )
 );
 
@@ -272,16 +328,16 @@ rules.set("import_from", () =>
   Diagram(
     Choice(0,
       Sequence(
-        K("from"),
+        T("from"),
         ZeroOrMore(Choice(0, T("."), T("..."))),
         NT("dotted_name"),
-        K("import"),
+        T("import"),
         NT("import_from_targets")
       ),
       Sequence(
-        K("from"),
+        T("from"),
         OneOrMore(Choice(0, T("."), T("..."))),
-        K("import"),
+        T("import"),
         NT("import_from_targets")
       )
     )
@@ -291,7 +347,12 @@ rules.set("import_from", () =>
 rules.set("import_from_targets", () =>
   Diagram(
     Choice(0,
-      Sequence(T("("), NT("import_from_as_names"), Optional(T(",")), T(")")),
+      Sequence(
+        T("("),
+        NT("import_from_as_names"),
+        Optional(T(",")),
+        T(")")
+      ),
       NT("import_from_as_names"),
       T("*")
     )
@@ -300,49 +361,56 @@ rules.set("import_from_targets", () =>
 
 rules.set("import_from_as_names", () =>
   Diagram(
-    Sequence(
-      NT("import_from_as_name"),
-      ZeroOrMore(Sequence(T(","), NT("import_from_as_name")))
-    )
+    OneOrMore(NT("import_from_as_name"), T(","))
   )
 );
 
 rules.set("import_from_as_name", () =>
   Diagram(
-    Sequence(T("NAME"), Optional(Sequence(K("as"), T("NAME"))))
+    Sequence(
+      T("NAME"),
+      Optional(Sequence(T("as"), T("NAME")))
+    )
   )
 );
 
 rules.set("dotted_as_names", () =>
   Diagram(
-    Sequence(
-      NT("dotted_as_name"),
-      ZeroOrMore(Sequence(T(","), NT("dotted_as_name")))
-    )
+    OneOrMore(NT("dotted_as_name"), T(","))
   )
 );
 
 rules.set("dotted_as_name", () =>
   Diagram(
-    Sequence(NT("dotted_name"), Optional(Sequence(K("as"), T("NAME"))))
+    Sequence(
+      NT("dotted_name"),
+      Optional(Sequence(T("as"), T("NAME")))
+    )
   )
 );
 
 rules.set("dotted_name", () =>
   Diagram(
-    Sequence(
-      T("NAME"),
-      ZeroOrMore(Sequence(T("."), T("NAME")))
+    Choice(0,
+      Sequence(NT("dotted_name"), T("."), T("NAME")),
+      T("NAME")
     )
   )
 );
 
-// ===== COMPOUND STATEMENTS - Common Elements =====
+// ============================================================================
+// COMPOUND STATEMENTS - Common Elements
+// ============================================================================
 
 rules.set("block", () =>
   Diagram(
     Choice(0,
-      Sequence(T("NEWLINE"), T("INDENT"), NT("statements"), T("DEDENT")),
+      Sequence(
+        T("NEWLINE"),
+        T("INDENT"),
+        NT("statements"),
+        T("DEDENT")
+      ),
       NT("simple_stmts")
     )
   )
@@ -350,11 +418,15 @@ rules.set("block", () =>
 
 rules.set("decorators", () =>
   Diagram(
-    OneOrMore(Sequence(T("@"), NT("named_expression"), T("NEWLINE")))
+    OneOrMore(
+      Sequence(T("@"), NT("named_expression"), T("NEWLINE"))
+    )
   )
 );
 
-// ===== CLASS DEFINITIONS =====
+// ============================================================================
+// CLASS DEFINITIONS
+// ============================================================================
 
 rules.set("class_def", () =>
   Diagram(
@@ -368,7 +440,7 @@ rules.set("class_def", () =>
 rules.set("class_def_raw", () =>
   Diagram(
     Sequence(
-      K("class"),
+      T("class"),
       T("NAME"),
       Optional(NT("type_params")),
       Optional(Sequence(T("("), Optional(NT("arguments")), T(")"))),
@@ -378,7 +450,9 @@ rules.set("class_def_raw", () =>
   )
 );
 
-// ===== FUNCTION DEFINITIONS =====
+// ============================================================================
+// FUNCTION DEFINITIONS
+// ============================================================================
 
 rules.set("function_def", () =>
   Diagram(
@@ -393,7 +467,7 @@ rules.set("function_def_raw", () =>
   Diagram(
     Choice(0,
       Sequence(
-        K("def"),
+        T("def"),
         T("NAME"),
         Optional(NT("type_params")),
         T("("),
@@ -405,8 +479,8 @@ rules.set("function_def_raw", () =>
         NT("block")
       ),
       Sequence(
-        K("async"),
-        K("def"),
+        T("async"),
+        T("def"),
         T("NAME"),
         Optional(NT("type_params")),
         T("("),
@@ -421,7 +495,18 @@ rules.set("function_def_raw", () =>
   )
 );
 
-// ===== FUNCTION PARAMETERS =====
+rules.set("func_type_comment", () =>
+  Diagram(
+    Choice(0,
+      Sequence(T("NEWLINE"), T("TYPE_COMMENT")),
+      T("TYPE_COMMENT")
+    )
+  )
+);
+
+// ============================================================================
+// FUNCTION PARAMETERS
+// ============================================================================
 
 rules.set("params", () =>
   Diagram(NT("parameters"))
@@ -430,10 +515,26 @@ rules.set("params", () =>
 rules.set("parameters", () =>
   Diagram(
     Choice(0,
-      Sequence(NT("slash_no_default"), ZeroOrMore(NT("param_no_default")), ZeroOrMore(NT("param_with_default")), Optional(NT("star_etc"))),
-      Sequence(NT("slash_with_default"), ZeroOrMore(NT("param_with_default")), Optional(NT("star_etc"))),
-      Sequence(OneOrMore(NT("param_no_default")), ZeroOrMore(NT("param_with_default")), Optional(NT("star_etc"))),
-      Sequence(OneOrMore(NT("param_with_default")), Optional(NT("star_etc"))),
+      Sequence(
+        NT("slash_no_default"),
+        ZeroOrMore(NT("param_no_default")),
+        ZeroOrMore(NT("param_with_default")),
+        Optional(NT("star_etc"))
+      ),
+      Sequence(
+        NT("slash_with_default"),
+        ZeroOrMore(NT("param_with_default")),
+        Optional(NT("star_etc"))
+      ),
+      Sequence(
+        OneOrMore(NT("param_no_default")),
+        ZeroOrMore(NT("param_with_default")),
+        Optional(NT("star_etc"))
+      ),
+      Sequence(
+        OneOrMore(NT("param_with_default")),
+        Optional(NT("star_etc"))
+      ),
       NT("star_etc")
     )
   )
@@ -441,7 +542,11 @@ rules.set("parameters", () =>
 
 rules.set("slash_no_default", () =>
   Diagram(
-    Sequence(OneOrMore(NT("param_no_default")), T("/"), Choice(0, T(","), Comment("&')'") ))
+    Sequence(
+      OneOrMore(NT("param_no_default")),
+      T("/"),
+      Choice(0, T(","), Comment("&')'"))
+    )
   )
 );
 
@@ -459,69 +564,114 @@ rules.set("slash_with_default", () =>
 rules.set("star_etc", () =>
   Diagram(
     Choice(0,
-      Sequence(T("*"), NT("param_no_default"), ZeroOrMore(NT("param_maybe_default")), Optional(NT("kwds"))),
-      Sequence(T("*"), NT("param_no_default_star_annotation"), ZeroOrMore(NT("param_maybe_default")), Optional(NT("kwds"))),
-      Sequence(T("*"), T(","), OneOrMore(NT("param_maybe_default")), Optional(NT("kwds"))),
+      Sequence(
+        T("*"),
+        NT("param_no_default"),
+        ZeroOrMore(NT("param_maybe_default")),
+        Optional(NT("kwds"))
+      ),
+      Sequence(
+        T("*"),
+        NT("param_no_default_star_annotation"),
+        ZeroOrMore(NT("param_maybe_default")),
+        Optional(NT("kwds"))
+      ),
+      Sequence(
+        T("*"),
+        T(","),
+        OneOrMore(NT("param_maybe_default")),
+        Optional(NT("kwds"))
+      ),
       NT("kwds")
     )
   )
 );
 
 rules.set("kwds", () =>
-  Diagram(Sequence(T("**"), NT("param_no_default")))
+  Diagram(
+    Sequence(T("**"), NT("param_no_default"))
+  )
 );
 
 rules.set("param_no_default", () =>
   Diagram(
-    Sequence(NT("param"), Choice(0, Sequence(T(","), Optional(T("TYPE_COMMENT"))), Sequence(Optional(T("TYPE_COMMENT")), Comment("&')'"))))
+    Choice(0,
+      Sequence(NT("param"), T(","), Optional(T("TYPE_COMMENT"))),
+      Sequence(NT("param"), Optional(T("TYPE_COMMENT")), Comment("&')'"))
+    )
   )
 );
 
 rules.set("param_no_default_star_annotation", () =>
   Diagram(
-    Sequence(NT("param_star_annotation"), Choice(0, Sequence(T(","), Optional(T("TYPE_COMMENT"))), Sequence(Optional(T("TYPE_COMMENT")), Comment("&')'"))))
+    Choice(0,
+      Sequence(NT("param_star_annotation"), T(","), Optional(T("TYPE_COMMENT"))),
+      Sequence(NT("param_star_annotation"), Optional(T("TYPE_COMMENT")), Comment("&')'"))
+    )
   )
 );
 
 rules.set("param_with_default", () =>
   Diagram(
-    Sequence(NT("param"), NT("default"), Choice(0, Sequence(T(","), Optional(T("TYPE_COMMENT"))), Sequence(Optional(T("TYPE_COMMENT")), Comment("&')'"))))
+    Choice(0,
+      Sequence(NT("param"), NT("default"), T(","), Optional(T("TYPE_COMMENT"))),
+      Sequence(NT("param"), NT("default"), Optional(T("TYPE_COMMENT")), Comment("&')'"))
+    )
   )
 );
 
 rules.set("param_maybe_default", () =>
   Diagram(
-    Sequence(NT("param"), Optional(NT("default")), Choice(0, Sequence(T(","), Optional(T("TYPE_COMMENT"))), Sequence(Optional(T("TYPE_COMMENT")), Comment("&')'"))))
+    Choice(0,
+      Sequence(NT("param"), Optional(NT("default")), T(","), Optional(T("TYPE_COMMENT"))),
+      Sequence(NT("param"), Optional(NT("default")), Optional(T("TYPE_COMMENT")), Comment("&')'"))
+    )
   )
 );
 
 rules.set("param", () =>
-  Diagram(Sequence(T("NAME"), Optional(NT("annotation"))))
+  Diagram(
+    Sequence(T("NAME"), Optional(NT("annotation")))
+  )
 );
 
 rules.set("param_star_annotation", () =>
-  Diagram(Sequence(T("NAME"), NT("star_annotation")))
+  Diagram(
+    Sequence(T("NAME"), NT("star_annotation"))
+  )
 );
 
 rules.set("annotation", () =>
-  Diagram(Sequence(T(":"), NT("expression")))
+  Diagram(
+    Sequence(T(":"), NT("expression"))
+  )
 );
 
 rules.set("star_annotation", () =>
-  Diagram(Sequence(T(":"), NT("star_expression")))
+  Diagram(
+    Sequence(T(":"), NT("star_expression"))
+  )
 );
 
 rules.set("default", () =>
-  Diagram(Sequence(T("="), NT("expression")))
+  Diagram(
+    Sequence(T("="), NT("expression"))
+  )
 );
 
-// ===== IF STATEMENT =====
+// ============================================================================
+// CONTROL FLOW - If Statement
+// ============================================================================
 
 rules.set("if_stmt", () =>
   Diagram(
-    Choice(0,
-      Sequence(K("if"), NT("named_expression"), T(":"), NT("block"), NT("elif_stmt")),
-      Sequence(K("if"), NT("named_expression"), T(":"), NT("block"), Optional(NT("else_block")))
+    Sequence(
+      T("if"),
+      NT("named_expression"),
+      T(":"),
+      NT("block"),
+      Optional(NT("elif_stmt")),
+      Optional(NT("else_block"))
     )
   )
 );
@@ -529,65 +679,161 @@ rules.set("if_stmt", () =>
 rules.set("elif_stmt", () =>
   Diagram(
     Choice(0,
-      Sequence(K("elif"), NT("named_expression"), T(":"), NT("block"), NT("elif_stmt")),
-      Sequence(K("elif"), NT("named_expression"), T(":"), NT("block"), Optional(NT("else_block")))
+      Sequence(
+        T("elif"),
+        NT("named_expression"),
+        T(":"),
+        NT("block"),
+        NT("elif_stmt")
+      ),
+      Sequence(
+        T("elif"),
+        NT("named_expression"),
+        T(":"),
+        NT("block"),
+        Optional(NT("else_block"))
+      )
     )
   )
 );
 
 rules.set("else_block", () =>
-  Diagram(Sequence(K("else"), T(":"), NT("block")))
-);
-
-// ===== WHILE STATEMENT =====
-
-rules.set("while_stmt", () =>
   Diagram(
-    Sequence(K("while"), NT("named_expression"), T(":"), NT("block"), Optional(NT("else_block")))
+    Sequence(T("else"), T(":"), NT("block"))
   )
 );
 
-// ===== FOR STATEMENT =====
+// ============================================================================
+// CONTROL FLOW - While Statement
+// ============================================================================
 
-rules.set("for_stmt", () =>
+rules.set("while_stmt", () =>
   Diagram(
-    Choice(0,
-      Sequence(K("for"), NT("star_targets"), K("in"), NT("star_expressions"), T(":"), Optional(T("TYPE_COMMENT")), NT("block"), Optional(NT("else_block"))),
-      Sequence(K("async"), K("for"), NT("star_targets"), K("in"), NT("star_expressions"), T(":"), Optional(T("TYPE_COMMENT")), NT("block"), Optional(NT("else_block")))
+    Sequence(
+      T("while"),
+      NT("named_expression"),
+      T(":"),
+      NT("block"),
+      Optional(NT("else_block"))
     )
   )
 );
 
-// ===== WITH STATEMENT =====
+// ============================================================================
+// CONTROL FLOW - For Statement
+// ============================================================================
+
+rules.set("for_stmt", () =>
+  Diagram(
+    Choice(0,
+      Sequence(
+        T("for"),
+        NT("star_targets"),
+        T("in"),
+        NT("star_expressions"),
+        T(":"),
+        Optional(T("TYPE_COMMENT")),
+        NT("block"),
+        Optional(NT("else_block"))
+      ),
+      Sequence(
+        T("async"),
+        T("for"),
+        NT("star_targets"),
+        T("in"),
+        NT("star_expressions"),
+        T(":"),
+        Optional(T("TYPE_COMMENT")),
+        NT("block"),
+        Optional(NT("else_block"))
+      )
+    )
+  )
+);
+
+// ============================================================================
+// CONTROL FLOW - With Statement
+// ============================================================================
 
 rules.set("with_stmt", () =>
   Diagram(
     Choice(0,
-      Sequence(K("with"), T("("), NT("with_item"), ZeroOrMore(Sequence(T(","), NT("with_item"))), Optional(T(",")), T(")"), T(":"), Optional(T("TYPE_COMMENT")), NT("block")),
-      Sequence(K("with"), NT("with_item"), ZeroOrMore(Sequence(T(","), NT("with_item"))), T(":"), Optional(T("TYPE_COMMENT")), NT("block")),
-      Sequence(K("async"), K("with"), T("("), NT("with_item"), ZeroOrMore(Sequence(T(","), NT("with_item"))), Optional(T(",")), T(")"), T(":"), NT("block")),
-      Sequence(K("async"), K("with"), NT("with_item"), ZeroOrMore(Sequence(T(","), NT("with_item"))), T(":"), Optional(T("TYPE_COMMENT")), NT("block"))
+      Sequence(
+        T("with"),
+        T("("),
+        OneOrMore(NT("with_item"), T(",")),
+        Optional(T(",")),
+        T(")"),
+        T(":"),
+        Optional(T("TYPE_COMMENT")),
+        NT("block")
+      ),
+      Sequence(
+        T("with"),
+        OneOrMore(NT("with_item"), T(",")),
+        T(":"),
+        Optional(T("TYPE_COMMENT")),
+        NT("block")
+      ),
+      Sequence(
+        T("async"),
+        T("with"),
+        T("("),
+        OneOrMore(NT("with_item"), T(",")),
+        Optional(T(",")),
+        T(")"),
+        T(":"),
+        NT("block")
+      ),
+      Sequence(
+        T("async"),
+        T("with"),
+        OneOrMore(NT("with_item"), T(",")),
+        T(":"),
+        NT("block")
+      )
     )
   )
 );
 
 rules.set("with_item", () =>
   Diagram(
-    Choice(0,
-      Sequence(NT("expression"), K("as"), NT("star_target")),
-      NT("expression")
+    Sequence(
+      NT("expression"),
+      Optional(Sequence(T("as"), NT("star_target")))
     )
   )
 );
 
-// ===== TRY STATEMENT =====
+// ============================================================================
+// CONTROL FLOW - Try Statement
+// ============================================================================
 
 rules.set("try_stmt", () =>
   Diagram(
     Choice(0,
-      Sequence(K("try"), T(":"), NT("block"), NT("finally_block")),
-      Sequence(K("try"), T(":"), NT("block"), OneOrMore(NT("except_block")), Optional(NT("else_block")), Optional(NT("finally_block"))),
-      Sequence(K("try"), T(":"), NT("block"), OneOrMore(NT("except_star_block")), Optional(NT("else_block")), Optional(NT("finally_block")))
+      Sequence(
+        T("try"),
+        T(":"),
+        NT("block"),
+        NT("finally_block")
+      ),
+      Sequence(
+        T("try"),
+        T(":"),
+        NT("block"),
+        OneOrMore(NT("except_block")),
+        Optional(NT("else_block")),
+        Optional(NT("finally_block"))
+      ),
+      Sequence(
+        T("try"),
+        T(":"),
+        NT("block"),
+        OneOrMore(NT("except_star_block")),
+        Optional(NT("else_block")),
+        Optional(NT("finally_block"))
+      )
     )
   )
 );
@@ -595,34 +841,45 @@ rules.set("try_stmt", () =>
 rules.set("except_block", () =>
   Diagram(
     Choice(0,
-      Sequence(K("except"), NT("expression"), T(":"), NT("block")),
-      Sequence(K("except"), NT("expression"), K("as"), T("NAME"), T(":"), NT("block")),
-      Sequence(K("except"), NT("expressions"), T(":"), NT("block")),
-      Sequence(K("except"), T(":"), NT("block"))
+      Sequence(
+        T("except"),
+        NT("expression"),
+        Optional(Sequence(T("as"), T("NAME"))),
+        T(":"),
+        NT("block")
+      ),
+      Sequence(T("except"), T(":"), NT("block"))
     )
   )
 );
 
 rules.set("except_star_block", () =>
   Diagram(
-    Choice(0,
-      Sequence(K("except"), T("*"), NT("expression"), T(":"), NT("block")),
-      Sequence(K("except"), T("*"), NT("expression"), K("as"), T("NAME"), T(":"), NT("block")),
-      Sequence(K("except"), T("*"), NT("expressions"), T(":"), NT("block"))
+    Sequence(
+      T("except"),
+      T("*"),
+      NT("expression"),
+      Optional(Sequence(T("as"), T("NAME"))),
+      T(":"),
+      NT("block")
     )
   )
 );
 
 rules.set("finally_block", () =>
-  Diagram(Sequence(K("finally"), T(":"), NT("block")))
+  Diagram(
+    Sequence(T("finally"), T(":"), NT("block"))
+  )
 );
 
-// ===== MATCH STATEMENT =====
+// ============================================================================
+// MATCH STATEMENT (PEP 634)
+// ============================================================================
 
 rules.set("match_stmt", () =>
   Diagram(
     Sequence(
-      SK("match"),
+      T('"match"'),
       NT("subject_expr"),
       T(":"),
       T("NEWLINE"),
@@ -644,12 +901,20 @@ rules.set("subject_expr", () =>
 
 rules.set("case_block", () =>
   Diagram(
-    Sequence(SK("case"), NT("patterns"), Optional(NT("guard")), T(":"), NT("block"))
+    Sequence(
+      T('"case"'),
+      NT("patterns"),
+      Optional(NT("guard")),
+      T(":"),
+      NT("block")
+    )
   )
 );
 
 rules.set("guard", () =>
-  Diagram(Sequence(K("if"), NT("named_expression")))
+  Diagram(
+    Sequence(T("if"), NT("named_expression"))
+  )
 );
 
 rules.set("patterns", () =>
@@ -672,16 +937,13 @@ rules.set("pattern", () =>
 
 rules.set("as_pattern", () =>
   Diagram(
-    Sequence(NT("or_pattern"), K("as"), NT("pattern_capture_target"))
+    Sequence(NT("or_pattern"), T("as"), NT("pattern_capture_target"))
   )
 );
 
 rules.set("or_pattern", () =>
   Diagram(
-    Sequence(
-      NT("closed_pattern"),
-      ZeroOrMore(Sequence(T("|"), NT("closed_pattern")))
-    )
+    OneOrMore(NT("closed_pattern"), T("|"))
   )
 );
 
@@ -706,9 +968,9 @@ rules.set("literal_pattern", () =>
       NT("signed_number"),
       NT("complex_number"),
       NT("strings"),
-      K("None"),
-      K("True"),
-      K("False")
+      T("None"),
+      T("True"),
+      T("False")
     )
   )
 );
@@ -719,9 +981,9 @@ rules.set("literal_expr", () =>
       NT("signed_number"),
       NT("complex_number"),
       NT("strings"),
-      K("None"),
-      K("True"),
-      K("False")
+      T("None"),
+      T("True"),
+      T("False")
     )
   )
 );
@@ -767,7 +1029,7 @@ rules.set("capture_pattern", () =>
 
 rules.set("pattern_capture_target", () =>
   Diagram(
-    Sequence(T("NAME"), Comment("not '_', not followed by '.', '(', or '='"))
+    Sequence(T("NAME"), Comment("!('.' | '(' | '=')"))
   )
 );
 
@@ -787,12 +1049,17 @@ rules.set("attr", () =>
 
 rules.set("name_or_attr", () =>
   Diagram(
-    Choice(0, NT("attr"), T("NAME"))
+    Choice(0,
+      NT("attr"),
+      T("NAME")
+    )
   )
 );
 
 rules.set("group_pattern", () =>
-  Diagram(Sequence(T("("), NT("pattern"), T(")")))
+  Diagram(
+    Sequence(T("("), NT("pattern"), T(")"))
+  )
 );
 
 rules.set("sequence_pattern", () =>
@@ -813,8 +1080,7 @@ rules.set("open_sequence_pattern", () =>
 rules.set("maybe_sequence_pattern", () =>
   Diagram(
     Sequence(
-      NT("maybe_star_pattern"),
-      ZeroOrMore(Sequence(T(","), NT("maybe_star_pattern"))),
+      OneOrMore(NT("maybe_star_pattern"), T(",")),
       Optional(T(","))
     )
   )
@@ -822,7 +1088,10 @@ rules.set("maybe_sequence_pattern", () =>
 
 rules.set("maybe_star_pattern", () =>
   Diagram(
-    Choice(0, NT("star_pattern"), NT("pattern"))
+    Choice(0,
+      NT("star_pattern"),
+      NT("pattern")
+    )
   )
 );
 
@@ -840,7 +1109,14 @@ rules.set("mapping_pattern", () =>
     Choice(0,
       Sequence(T("{"), T("}")),
       Sequence(T("{"), NT("double_star_pattern"), Optional(T(",")), T("}")),
-      Sequence(T("{"), NT("items_pattern"), T(","), NT("double_star_pattern"), Optional(T(",")), T("}")),
+      Sequence(
+        T("{"),
+        NT("items_pattern"),
+        T(","),
+        NT("double_star_pattern"),
+        Optional(T(",")),
+        T("}")
+      ),
       Sequence(T("{"), NT("items_pattern"), Optional(T(",")), T("}"))
     )
   )
@@ -848,10 +1124,7 @@ rules.set("mapping_pattern", () =>
 
 rules.set("items_pattern", () =>
   Diagram(
-    Sequence(
-      NT("key_value_pattern"),
-      ZeroOrMore(Sequence(T(","), NT("key_value_pattern")))
-    )
+    OneOrMore(NT("key_value_pattern"), T(","))
   )
 );
 
@@ -866,7 +1139,9 @@ rules.set("key_value_pattern", () =>
 );
 
 rules.set("double_star_pattern", () =>
-  Diagram(Sequence(T("**"), NT("pattern_capture_target")))
+  Diagram(
+    Sequence(T("**"), NT("pattern_capture_target"))
+  )
 );
 
 rules.set("class_pattern", () =>
@@ -875,50 +1150,67 @@ rules.set("class_pattern", () =>
       Sequence(NT("name_or_attr"), T("("), T(")")),
       Sequence(NT("name_or_attr"), T("("), NT("positional_patterns"), Optional(T(",")), T(")")),
       Sequence(NT("name_or_attr"), T("("), NT("keyword_patterns"), Optional(T(",")), T(")")),
-      Sequence(NT("name_or_attr"), T("("), NT("positional_patterns"), T(","), NT("keyword_patterns"), Optional(T(",")), T(")"))
+      Sequence(
+        NT("name_or_attr"),
+        T("("),
+        NT("positional_patterns"),
+        T(","),
+        NT("keyword_patterns"),
+        Optional(T(",")),
+        T(")")
+      )
     )
   )
 );
 
 rules.set("positional_patterns", () =>
   Diagram(
-    Sequence(
-      NT("pattern"),
-      ZeroOrMore(Sequence(T(","), NT("pattern")))
-    )
+    OneOrMore(NT("pattern"), T(","))
   )
 );
 
 rules.set("keyword_patterns", () =>
   Diagram(
-    Sequence(
-      NT("keyword_pattern"),
-      ZeroOrMore(Sequence(T(","), NT("keyword_pattern")))
-    )
+    OneOrMore(NT("keyword_pattern"), T(","))
   )
 );
 
 rules.set("keyword_pattern", () =>
-  Diagram(Sequence(T("NAME"), T("="), NT("pattern")))
+  Diagram(
+    Sequence(T("NAME"), T("="), NT("pattern"))
+  )
 );
 
-// ===== TYPE STATEMENT =====
+// ============================================================================
+// TYPE STATEMENTS (PEP 695)
+// ============================================================================
 
 rules.set("type_alias", () =>
   Diagram(
-    Sequence(SK("type"), T("NAME"), Optional(NT("type_params")), T("="), NT("expression"))
+    Sequence(
+      T('"type"'),
+      T("NAME"),
+      Optional(NT("type_params")),
+      T("="),
+      NT("expression")
+    )
   )
 );
 
 rules.set("type_params", () =>
-  Diagram(Sequence(T("["), NT("type_param_seq"), T("]")))
+  Diagram(
+    Sequence(
+      T("["),
+      NT("type_param_seq"),
+      T("]")
+    )
+  )
 );
 
 rules.set("type_param_seq", () =>
   Diagram(
     Sequence(
-      NT("type_param"),
-      ZeroOrMore(Sequence(T(","), NT("type_param"))),
+      OneOrMore(NT("type_param"), T(",")),
       Optional(T(","))
     )
   )
@@ -935,33 +1227,69 @@ rules.set("type_param", () =>
 );
 
 rules.set("type_param_bound", () =>
-  Diagram(Sequence(T(":"), NT("expression")))
+  Diagram(
+    Sequence(T(":"), NT("expression"))
+  )
 );
 
 rules.set("type_param_default", () =>
-  Diagram(Sequence(T("="), NT("expression")))
+  Diagram(
+    Sequence(T("="), NT("expression"))
+  )
 );
 
 rules.set("type_param_starred_default", () =>
-  Diagram(Sequence(T("="), NT("star_expression")))
+  Diagram(
+    Sequence(T("="), NT("star_expression"))
+  )
 );
 
-// ===== EXPRESSIONS =====
-
-rules.set("expressions", () =>
+rules.set("type_expressions", () =>
   Diagram(
     Choice(0,
-      Sequence(NT("expression"), OneOrMore(Sequence(T(","), NT("expression"))), Optional(T(","))),
-      Sequence(NT("expression"), T(",")),
-      NT("expression")
+      Sequence(
+        OneOrMore(NT("expression"), T(",")),
+        T(","),
+        T("*"),
+        NT("expression"),
+        T(","),
+        T("**"),
+        NT("expression")
+      ),
+      Sequence(
+        OneOrMore(NT("expression"), T(",")),
+        T(","),
+        T("*"),
+        NT("expression")
+      ),
+      Sequence(
+        OneOrMore(NT("expression"), T(",")),
+        T(","),
+        T("**"),
+        NT("expression")
+      ),
+      Sequence(T("*"), NT("expression"), T(","), T("**"), NT("expression")),
+      Sequence(T("*"), NT("expression")),
+      Sequence(T("**"), NT("expression")),
+      OneOrMore(NT("expression"), T(","))
     )
   )
 );
 
+// ============================================================================
+// EXPRESSIONS
+// ============================================================================
+
 rules.set("expression", () =>
   Diagram(
     Choice(0,
-      Sequence(NT("disjunction"), K("if"), NT("disjunction"), K("else"), NT("expression")),
+      Sequence(
+        NT("disjunction"),
+        T("if"),
+        NT("disjunction"),
+        T("else"),
+        NT("expression")
+      ),
       NT("disjunction"),
       NT("lambdef")
     )
@@ -971,8 +1299,18 @@ rules.set("expression", () =>
 rules.set("yield_expr", () =>
   Diagram(
     Choice(0,
-      Sequence(K("yield"), K("from"), NT("expression")),
-      Sequence(K("yield"), Optional(NT("star_expressions")))
+      Sequence(T("yield"), T("from"), NT("expression")),
+      Sequence(T("yield"), Optional(NT("star_expressions")))
+    )
+  )
+);
+
+rules.set("expressions", () =>
+  Diagram(
+    Choice(0,
+      Sequence(NT("expression"), OneOrMore(Sequence(T(","), NT("expression"))), Optional(T(","))),
+      Sequence(NT("expression"), T(",")),
+      NT("expression")
     )
   )
 );
@@ -999,8 +1337,7 @@ rules.set("star_expression", () =>
 rules.set("star_named_expressions", () =>
   Diagram(
     Sequence(
-      NT("star_named_expression"),
-      ZeroOrMore(Sequence(T(","), NT("star_named_expression"))),
+      OneOrMore(NT("star_named_expression"), T(",")),
       Optional(T(","))
     )
   )
@@ -1033,7 +1370,7 @@ rules.set("named_expression", () =>
 rules.set("disjunction", () =>
   Diagram(
     Choice(0,
-      Sequence(NT("conjunction"), OneOrMore(Sequence(K("or"), NT("conjunction")))),
+      Sequence(NT("conjunction"), OneOrMore(Sequence(T("or"), NT("conjunction")))),
       NT("conjunction")
     )
   )
@@ -1042,7 +1379,7 @@ rules.set("disjunction", () =>
 rules.set("conjunction", () =>
   Diagram(
     Choice(0,
-      Sequence(NT("inversion"), OneOrMore(Sequence(K("and"), NT("inversion")))),
+      Sequence(NT("inversion"), OneOrMore(Sequence(T("and"), NT("inversion")))),
       NT("inversion")
     )
   )
@@ -1051,19 +1388,21 @@ rules.set("conjunction", () =>
 rules.set("inversion", () =>
   Diagram(
     Choice(0,
-      Sequence(K("not"), NT("inversion")),
+      Sequence(T("not"), NT("inversion")),
       NT("comparison")
     )
   )
 );
 
-// ===== COMPARISON OPERATORS =====
+// ============================================================================
+// COMPARISON OPERATORS
+// ============================================================================
 
 rules.set("comparison", () =>
   Diagram(
-    Choice(0,
-      Sequence(NT("bitwise_or"), OneOrMore(NT("compare_op_bitwise_or_pair"))),
-      NT("bitwise_or")
+    Sequence(
+      NT("bitwise_or"),
+      ZeroOrMore(NT("compare_op_bitwise_or_pair"))
     )
   )
 );
@@ -1110,75 +1449,85 @@ rules.set("gt_bitwise_or", () =>
 );
 
 rules.set("notin_bitwise_or", () =>
-  Diagram(Sequence(K("not"), K("in"), NT("bitwise_or")))
+  Diagram(Sequence(T("not"), T("in"), NT("bitwise_or")))
 );
 
 rules.set("in_bitwise_or", () =>
-  Diagram(Sequence(K("in"), NT("bitwise_or")))
+  Diagram(Sequence(T("in"), NT("bitwise_or")))
 );
 
 rules.set("isnot_bitwise_or", () =>
-  Diagram(Sequence(K("is"), K("not"), NT("bitwise_or")))
+  Diagram(Sequence(T("is"), T("not"), NT("bitwise_or")))
 );
 
 rules.set("is_bitwise_or", () =>
-  Diagram(Sequence(K("is"), NT("bitwise_or")))
+  Diagram(Sequence(T("is"), NT("bitwise_or")))
 );
 
-// ===== BITWISE OPERATORS =====
+// ============================================================================
+// BITWISE OPERATORS
+// ============================================================================
 
 rules.set("bitwise_or", () =>
   Diagram(
-    Sequence(
-      NT("bitwise_xor"),
-      ZeroOrMore(Sequence(T("|"), NT("bitwise_xor")))
+    Choice(0,
+      Sequence(NT("bitwise_or"), T("|"), NT("bitwise_xor")),
+      NT("bitwise_xor")
     )
   )
 );
 
 rules.set("bitwise_xor", () =>
   Diagram(
-    Sequence(
-      NT("bitwise_and"),
-      ZeroOrMore(Sequence(T("^"), NT("bitwise_and")))
+    Choice(0,
+      Sequence(NT("bitwise_xor"), T("^"), NT("bitwise_and")),
+      NT("bitwise_and")
     )
   )
 );
 
 rules.set("bitwise_and", () =>
   Diagram(
-    Sequence(
-      NT("shift_expr"),
-      ZeroOrMore(Sequence(T("&"), NT("shift_expr")))
+    Choice(0,
+      Sequence(NT("bitwise_and"), T("&"), NT("shift_expr")),
+      NT("shift_expr")
     )
   )
 );
 
 rules.set("shift_expr", () =>
   Diagram(
-    Sequence(
-      NT("sum"),
-      ZeroOrMore(Sequence(Choice(0, T("<<"), T(">>")), NT("sum")))
+    Choice(0,
+      Sequence(NT("shift_expr"), T("<<"), NT("sum")),
+      Sequence(NT("shift_expr"), T(">>"), NT("sum")),
+      NT("sum")
     )
   )
 );
 
-// ===== ARITHMETIC OPERATORS =====
+// ============================================================================
+// ARITHMETIC OPERATORS
+// ============================================================================
 
 rules.set("sum", () =>
   Diagram(
-    Sequence(
-      NT("term"),
-      ZeroOrMore(Sequence(Choice(0, T("+"), T("-")), NT("term")))
+    Choice(0,
+      Sequence(NT("sum"), T("+"), NT("term")),
+      Sequence(NT("sum"), T("-"), NT("term")),
+      NT("term")
     )
   )
 );
 
 rules.set("term", () =>
   Diagram(
-    Sequence(
-      NT("factor"),
-      ZeroOrMore(Sequence(Choice(0, T("*"), T("/"), T("//"), T("%"), T("@")), NT("factor")))
+    Choice(0,
+      Sequence(NT("term"), T("*"), NT("factor")),
+      Sequence(NT("term"), T("/"), NT("factor")),
+      Sequence(NT("term"), T("//"), NT("factor")),
+      Sequence(NT("term"), T("%"), NT("factor")),
+      Sequence(NT("term"), T("@"), NT("factor")),
+      NT("factor")
     )
   )
 );
@@ -1203,12 +1552,14 @@ rules.set("power", () =>
   )
 );
 
-// ===== PRIMARY ELEMENTS =====
+// ============================================================================
+// PRIMARY EXPRESSIONS
+// ============================================================================
 
 rules.set("await_primary", () =>
   Diagram(
     Choice(0,
-      Sequence(K("await"), NT("primary")),
+      Sequence(T("await"), NT("primary")),
       NT("primary")
     )
   )
@@ -1216,16 +1567,12 @@ rules.set("await_primary", () =>
 
 rules.set("primary", () =>
   Diagram(
-    Sequence(
-      NT("atom"),
-      ZeroOrMore(
-        Choice(0,
-          Sequence(T("."), T("NAME")),
-          NT("genexp"),
-          Sequence(T("("), Optional(NT("arguments")), T(")")),
-          Sequence(T("["), NT("slices"), T("]"))
-        )
-      )
+    Choice(0,
+      Sequence(NT("primary"), T("."), T("NAME")),
+      Sequence(NT("primary"), NT("genexp")),
+      Sequence(NT("primary"), T("("), Optional(NT("arguments")), T(")")),
+      Sequence(NT("primary"), T("["), NT("slices"), T("]")),
+      NT("atom")
     )
   )
 );
@@ -1235,8 +1582,7 @@ rules.set("slices", () =>
     Choice(0,
       NT("slice"),
       Sequence(
-        Choice(0, NT("slice"), NT("starred_expression")),
-        ZeroOrMore(Sequence(T(","), Choice(0, NT("slice"), NT("starred_expression")))),
+        OneOrMore(Choice(0, NT("slice"), NT("starred_expression")), T(",")),
         Optional(T(","))
       )
     )
@@ -1261,14 +1607,20 @@ rules.set("atom", () =>
   Diagram(
     Choice(0,
       T("NAME"),
-      K("True"),
-      K("False"),
-      K("None"),
+      T("True"),
+      T("False"),
+      T("None"),
       NT("strings"),
       T("NUMBER"),
-      Choice(0, NT("tuple"), NT("group"), NT("genexp")),
-      Choice(0, NT("list"), NT("listcomp")),
-      Choice(0, NT("dict"), NT("set"), NT("dictcomp"), NT("setcomp")),
+      NT("tuple"),
+      NT("group"),
+      NT("genexp"),
+      NT("list"),
+      NT("listcomp"),
+      NT("dict"),
+      NT("set"),
+      NT("dictcomp"),
+      NT("setcomp"),
       T("...")
     )
   )
@@ -1276,15 +1628,26 @@ rules.set("atom", () =>
 
 rules.set("group", () =>
   Diagram(
-    Sequence(T("("), Choice(0, NT("yield_expr"), NT("named_expression")), T(")"))
+    Sequence(
+      T("("),
+      Choice(0, NT("yield_expr"), NT("named_expression")),
+      T(")")
+    )
   )
 );
 
-// ===== LAMBDA FUNCTIONS =====
+// ============================================================================
+// LAMBDA
+// ============================================================================
 
 rules.set("lambdef", () =>
   Diagram(
-    Sequence(K("lambda"), Optional(NT("lambda_params")), T(":"), NT("expression"))
+    Sequence(
+      T("lambda"),
+      Optional(NT("lambda_params")),
+      T(":"),
+      NT("expression")
+    )
   )
 );
 
@@ -1295,10 +1658,26 @@ rules.set("lambda_params", () =>
 rules.set("lambda_parameters", () =>
   Diagram(
     Choice(0,
-      Sequence(NT("lambda_slash_no_default"), ZeroOrMore(NT("lambda_param_no_default")), ZeroOrMore(NT("lambda_param_with_default")), Optional(NT("lambda_star_etc"))),
-      Sequence(NT("lambda_slash_with_default"), ZeroOrMore(NT("lambda_param_with_default")), Optional(NT("lambda_star_etc"))),
-      Sequence(OneOrMore(NT("lambda_param_no_default")), ZeroOrMore(NT("lambda_param_with_default")), Optional(NT("lambda_star_etc"))),
-      Sequence(OneOrMore(NT("lambda_param_with_default")), Optional(NT("lambda_star_etc"))),
+      Sequence(
+        NT("lambda_slash_no_default"),
+        ZeroOrMore(NT("lambda_param_no_default")),
+        ZeroOrMore(NT("lambda_param_with_default")),
+        Optional(NT("lambda_star_etc"))
+      ),
+      Sequence(
+        NT("lambda_slash_with_default"),
+        ZeroOrMore(NT("lambda_param_with_default")),
+        Optional(NT("lambda_star_etc"))
+      ),
+      Sequence(
+        OneOrMore(NT("lambda_param_no_default")),
+        ZeroOrMore(NT("lambda_param_with_default")),
+        Optional(NT("lambda_star_etc"))
+      ),
+      Sequence(
+        OneOrMore(NT("lambda_param_with_default")),
+        Optional(NT("lambda_star_etc"))
+      ),
       NT("lambda_star_etc")
     )
   )
@@ -1306,28 +1685,49 @@ rules.set("lambda_parameters", () =>
 
 rules.set("lambda_slash_no_default", () =>
   Diagram(
-    Sequence(OneOrMore(NT("lambda_param_no_default")), T("/"), Choice(0, T(","), Comment("&':'")))
+    Sequence(
+      OneOrMore(NT("lambda_param_no_default")),
+      T("/"),
+      Choice(0, T(","), Comment("&':'"))
+    )
   )
 );
 
 rules.set("lambda_slash_with_default", () =>
   Diagram(
-    Sequence(ZeroOrMore(NT("lambda_param_no_default")), OneOrMore(NT("lambda_param_with_default")), T("/"), Choice(0, T(","), Comment("&':'")))
+    Sequence(
+      ZeroOrMore(NT("lambda_param_no_default")),
+      OneOrMore(NT("lambda_param_with_default")),
+      T("/"),
+      Choice(0, T(","), Comment("&':'"))
+    )
   )
 );
 
 rules.set("lambda_star_etc", () =>
   Diagram(
     Choice(0,
-      Sequence(T("*"), NT("lambda_param_no_default"), ZeroOrMore(NT("lambda_param_maybe_default")), Optional(NT("lambda_kwds"))),
-      Sequence(T("*"), T(","), OneOrMore(NT("lambda_param_maybe_default")), Optional(NT("lambda_kwds"))),
+      Sequence(
+        T("*"),
+        NT("lambda_param_no_default"),
+        ZeroOrMore(NT("lambda_param_maybe_default")),
+        Optional(NT("lambda_kwds"))
+      ),
+      Sequence(
+        T("*"),
+        T(","),
+        OneOrMore(NT("lambda_param_maybe_default")),
+        Optional(NT("lambda_kwds"))
+      ),
       NT("lambda_kwds")
     )
   )
 );
 
 rules.set("lambda_kwds", () =>
-  Diagram(Sequence(T("**"), NT("lambda_param_no_default")))
+  Diagram(
+    Sequence(T("**"), NT("lambda_param_no_default"))
+  )
 );
 
 rules.set("lambda_param_no_default", () =>
@@ -1352,7 +1752,31 @@ rules.set("lambda_param", () =>
   Diagram(T("NAME"))
 );
 
-// ===== LITERALS =====
+// ============================================================================
+// LITERALS
+// ============================================================================
+
+rules.set("strings", () =>
+  Diagram(
+    OneOrMore(
+      Choice(0, NT("fstring"), NT("tstring"), NT("string"))
+    )
+  )
+);
+
+rules.set("string", () =>
+  Diagram(T("STRING"))
+);
+
+rules.set("fstring", () =>
+  Diagram(
+    Sequence(
+      T("FSTRING_START"),
+      ZeroOrMore(NT("fstring_middle")),
+      T("FSTRING_END")
+    )
+  )
+);
 
 rules.set("fstring_middle", () =>
   Diagram(
@@ -1367,7 +1791,7 @@ rules.set("fstring_replacement_field", () =>
   Diagram(
     Sequence(
       T("{"),
-      NT("annotated_rhs"),
+      Choice(0, NT("yield_expr"), NT("star_expressions")),
       Optional(T("=")),
       Optional(NT("fstring_conversion")),
       Optional(NT("fstring_full_format_spec")),
@@ -1377,11 +1801,15 @@ rules.set("fstring_replacement_field", () =>
 );
 
 rules.set("fstring_conversion", () =>
-  Diagram(Sequence(T("!"), T("NAME")))
+  Diagram(
+    Sequence(T("!"), T("NAME"))
+  )
 );
 
 rules.set("fstring_full_format_spec", () =>
-  Diagram(Sequence(T(":"), ZeroOrMore(NT("fstring_format_spec"))))
+  Diagram(
+    Sequence(T(":"), ZeroOrMore(NT("fstring_format_spec")))
+  )
 );
 
 rules.set("fstring_format_spec", () =>
@@ -1393,47 +1821,12 @@ rules.set("fstring_format_spec", () =>
   )
 );
 
-rules.set("fstring", () =>
-  Diagram(
-    Sequence(T("FSTRING_START"), ZeroOrMore(NT("fstring_middle")), T("FSTRING_END"))
-  )
-);
-
-rules.set("tstring_format_spec_replacement_field", () =>
+rules.set("tstring", () =>
   Diagram(
     Sequence(
-      T("{"),
-      NT("annotated_rhs"),
-      Optional(T("=")),
-      Optional(NT("fstring_conversion")),
-      Optional(NT("tstring_full_format_spec")),
-      T("}")
-    )
-  )
-);
-
-rules.set("tstring_format_spec", () =>
-  Diagram(
-    Choice(0,
-      T("TSTRING_MIDDLE"),
-      NT("tstring_format_spec_replacement_field")
-    )
-  )
-);
-
-rules.set("tstring_full_format_spec", () =>
-  Diagram(Sequence(T(":"), ZeroOrMore(NT("tstring_format_spec"))))
-);
-
-rules.set("tstring_replacement_field", () =>
-  Diagram(
-    Sequence(
-      T("{"),
-      NT("annotated_rhs"),
-      Optional(T("=")),
-      Optional(NT("fstring_conversion")),
-      Optional(NT("tstring_full_format_spec")),
-      T("}")
+      T("TSTRING_START"),
+      ZeroOrMore(NT("tstring_middle")),
+      T("TSTRING_END")
     )
   )
 );
@@ -1447,30 +1840,58 @@ rules.set("tstring_middle", () =>
   )
 );
 
-rules.set("tstring", () =>
+rules.set("tstring_replacement_field", () =>
   Diagram(
-    Sequence(T("TSTRING_START"), ZeroOrMore(NT("tstring_middle")), T("TSTRING_END"))
-  )
-);
-
-rules.set("string", () =>
-  Diagram(T("STRING"))
-);
-
-rules.set("strings", () =>
-  Diagram(
-    Choice(0,
-      OneOrMore(Choice(0, NT("fstring"), NT("string"))),
-      OneOrMore(NT("tstring"))
+    Sequence(
+      T("{"),
+      Choice(0, NT("yield_expr"), NT("star_expressions")),
+      Optional(T("=")),
+      Optional(NT("fstring_conversion")),
+      Optional(NT("tstring_full_format_spec")),
+      T("}")
     )
   )
 );
 
-// ===== COLLECTIONS =====
+rules.set("tstring_full_format_spec", () =>
+  Diagram(
+    Sequence(T(":"), ZeroOrMore(NT("tstring_format_spec")))
+  )
+);
+
+rules.set("tstring_format_spec", () =>
+  Diagram(
+    Choice(0,
+      T("TSTRING_MIDDLE"),
+      NT("tstring_format_spec_replacement_field")
+    )
+  )
+);
+
+rules.set("tstring_format_spec_replacement_field", () =>
+  Diagram(
+    Sequence(
+      T("{"),
+      Choice(0, NT("yield_expr"), NT("star_expressions")),
+      Optional(T("=")),
+      Optional(NT("fstring_conversion")),
+      Optional(NT("fstring_full_format_spec")),
+      T("}")
+    )
+  )
+);
+
+// ============================================================================
+// COLLECTIONS
+// ============================================================================
 
 rules.set("list", () =>
   Diagram(
-    Sequence(T("["), Optional(NT("star_named_expressions")), T("]"))
+    Sequence(
+      T("["),
+      Optional(NT("star_named_expressions")),
+      T("]")
+    )
   )
 );
 
@@ -1492,15 +1913,17 @@ rules.set("set", () =>
 
 rules.set("dict", () =>
   Diagram(
-    Sequence(T("{"), Optional(NT("double_starred_kvpairs")), T("}"))
+    Choice(0,
+      Sequence(T("{"), T("}")),
+      Sequence(T("{"), NT("double_starred_kvpairs"), T("}"))
+    )
   )
 );
 
 rules.set("double_starred_kvpairs", () =>
   Diagram(
     Sequence(
-      NT("double_starred_kvpair"),
-      ZeroOrMore(Sequence(T(","), NT("double_starred_kvpair"))),
+      OneOrMore(NT("double_starred_kvpair"), T(",")),
       Optional(T(","))
     )
   )
@@ -1516,33 +1939,62 @@ rules.set("double_starred_kvpair", () =>
 );
 
 rules.set("kvpair", () =>
-  Diagram(Sequence(NT("expression"), T(":"), NT("expression")))
+  Diagram(
+    Sequence(NT("expression"), T(":"), NT("expression"))
+  )
 );
 
-// ===== COMPREHENSIONS & GENERATORS =====
+// ============================================================================
+// COMPREHENSIONS
+// ============================================================================
 
 rules.set("for_if_clauses", () =>
-  Diagram(OneOrMore(NT("for_if_clause")))
+  Diagram(
+    OneOrMore(NT("for_if_clause"))
+  )
 );
 
 rules.set("for_if_clause", () =>
   Diagram(
     Choice(0,
-      Sequence(K("async"), K("for"), NT("star_targets"), K("in"), NT("disjunction"), ZeroOrMore(Sequence(K("if"), NT("disjunction")))),
-      Sequence(K("for"), NT("star_targets"), K("in"), NT("disjunction"), ZeroOrMore(Sequence(K("if"), NT("disjunction"))))
+      Sequence(
+        T("async"),
+        T("for"),
+        NT("star_targets"),
+        T("in"),
+        NT("disjunction"),
+        ZeroOrMore(Sequence(T("if"), NT("disjunction")))
+      ),
+      Sequence(
+        T("for"),
+        NT("star_targets"),
+        T("in"),
+        NT("disjunction"),
+        ZeroOrMore(Sequence(T("if"), NT("disjunction")))
+      )
     )
   )
 );
 
 rules.set("listcomp", () =>
   Diagram(
-    Sequence(T("["), NT("named_expression"), NT("for_if_clauses"), T("]"))
+    Sequence(
+      T("["),
+      NT("named_expression"),
+      NT("for_if_clauses"),
+      T("]")
+    )
   )
 );
 
 rules.set("setcomp", () =>
   Diagram(
-    Sequence(T("{"), NT("named_expression"), NT("for_if_clauses"), T("}"))
+    Sequence(
+      T("{"),
+      NT("named_expression"),
+      NT("for_if_clauses"),
+      T("}")
+    )
   )
 );
 
@@ -1550,7 +2002,7 @@ rules.set("genexp", () =>
   Diagram(
     Sequence(
       T("("),
-      Choice(0, NT("assignment_expression"), NT("expression")),
+      Choice(0, NT("assignment_expression"), Sequence(NT("expression"), Comment("!':='"))),
       NT("for_if_clauses"),
       T(")")
     )
@@ -1559,11 +2011,18 @@ rules.set("genexp", () =>
 
 rules.set("dictcomp", () =>
   Diagram(
-    Sequence(T("{"), NT("kvpair"), NT("for_if_clauses"), T("}"))
+    Sequence(
+      T("{"),
+      NT("kvpair"),
+      NT("for_if_clauses"),
+      T("}")
+    )
   )
 );
 
-// ===== FUNCTION CALL ARGUMENTS =====
+// ============================================================================
+// FUNCTION ARGUMENTS
+// ============================================================================
 
 rules.set("arguments", () =>
   Diagram(
@@ -1575,8 +2034,7 @@ rules.set("args", () =>
   Diagram(
     Choice(0,
       Sequence(
-        Choice(0, NT("starred_expression"), NT("assignment_expression"), NT("expression")),
-        ZeroOrMore(Sequence(T(","), Choice(0, NT("starred_expression"), NT("assignment_expression"), NT("expression")))),
+        OneOrMore(Choice(0, NT("starred_expression"), NT("assignment_expression"), Sequence(NT("expression"), Comment("!':='"))), T(",")),
         Optional(Sequence(T(","), NT("kwargs")))
       ),
       NT("kwargs")
@@ -1588,20 +2046,23 @@ rules.set("kwargs", () =>
   Diagram(
     Choice(0,
       Sequence(
-        NT("kwarg_or_starred"),
-        ZeroOrMore(Sequence(T(","), NT("kwarg_or_starred"))),
+        OneOrMore(NT("kwarg_or_starred"), T(",")),
         T(","),
-        NT("kwarg_or_double_starred"),
-        ZeroOrMore(Sequence(T(","), NT("kwarg_or_double_starred")))
+        OneOrMore(NT("kwarg_or_double_starred"), T(","))
       ),
-      Sequence(NT("kwarg_or_starred"), ZeroOrMore(Sequence(T(","), NT("kwarg_or_starred")))),
-      Sequence(NT("kwarg_or_double_starred"), ZeroOrMore(Sequence(T(","), NT("kwarg_or_double_starred"))))
+      OneOrMore(NT("kwarg_or_starred"), T(",")),
+      OneOrMore(NT("kwarg_or_double_starred"), T(","))
     )
   )
 );
 
 rules.set("starred_expression", () =>
-  Diagram(Sequence(T("*"), NT("expression")))
+  Diagram(
+    Choice(0,
+      Sequence(T("*"), NT("expression")),
+      NT("expression")
+    )
+  )
 );
 
 rules.set("kwarg_or_starred", () =>
@@ -1622,20 +2083,26 @@ rules.set("kwarg_or_double_starred", () =>
   )
 );
 
-// ===== ASSIGNMENT TARGETS =====
+// ============================================================================
+// ASSIGNMENT TARGETS
+// ============================================================================
 
 rules.set("star_targets", () =>
   Diagram(
     Choice(0,
-      NT("star_target"),
-      Sequence(NT("star_target"), ZeroOrMore(Sequence(T(","), NT("star_target"))), Optional(T(",")))
+      Sequence(NT("star_target"), OneOrMore(Sequence(T(","), NT("star_target"))), Optional(T(","))),
+      Sequence(NT("star_target"), T(",")),
+      NT("star_target")
     )
   )
 );
 
 rules.set("star_targets_list_seq", () =>
   Diagram(
-    Sequence(NT("star_target"), ZeroOrMore(Sequence(T(","), NT("star_target"))), Optional(T(",")))
+    Sequence(
+      OneOrMore(NT("star_target"), T(",")),
+      Optional(T(","))
+    )
   )
 );
 
@@ -1699,30 +2166,28 @@ rules.set("single_subscript_attribute_target", () =>
 
 rules.set("t_primary", () =>
   Diagram(
-    Sequence(
-      NT("atom"),
-      ZeroOrMore(
-        Choice(0,
-          Sequence(T("."), T("NAME")),
-          Sequence(T("["), NT("slices"), T("]")),
-          NT("genexp"),
-          Sequence(T("("), Optional(NT("arguments")), T(")"))
-        )
-      ),
-      Comment("&t_lookahead")
+    Choice(0,
+      Sequence(NT("t_primary"), T("."), T("NAME")),
+      Sequence(NT("t_primary"), T("["), NT("slices"), T("]")),
+      Sequence(NT("t_primary"), NT("genexp")),
+      Sequence(NT("t_primary"), T("("), Optional(NT("arguments")), T(")")),
+      NT("atom")
     )
   )
 );
 
 rules.set("t_lookahead", () =>
-  Diagram(Choice(0, T("("), T("["), T(".")))
+  Diagram(
+    Choice(0, T("("), T("["), T("."))
+  )
 );
-
-// ===== DEL TARGETS =====
 
 rules.set("del_targets", () =>
   Diagram(
-    Sequence(NT("del_target"), ZeroOrMore(Sequence(T(","), NT("del_target"))), Optional(T(",")))
+    Sequence(
+      OneOrMore(NT("del_target"), T(",")),
+      Optional(T(","))
+    )
   )
 );
 
@@ -1747,44 +2212,23 @@ rules.set("del_t_atom", () =>
   )
 );
 
-// ===== TYPING ELEMENTS =====
+// ============================================================================
+// EXPORTS
+// ============================================================================
 
-rules.set("type_expressions", () =>
-  Diagram(
-    Choice(0,
-      Sequence(NT("expression"), ZeroOrMore(Sequence(T(","), NT("expression"))), T(","), T("*"), NT("expression"), T(","), T("**"), NT("expression")),
-      Sequence(NT("expression"), ZeroOrMore(Sequence(T(","), NT("expression"))), T(","), T("*"), NT("expression")),
-      Sequence(NT("expression"), ZeroOrMore(Sequence(T(","), NT("expression"))), T(","), T("**"), NT("expression")),
-      Sequence(T("*"), NT("expression"), T(","), T("**"), NT("expression")),
-      Sequence(T("*"), NT("expression")),
-      Sequence(T("**"), NT("expression")),
-      Sequence(NT("expression"), ZeroOrMore(Sequence(T(","), NT("expression"))))
-    )
-  )
-);
-
-rules.set("func_type_comment", () =>
-  Diagram(
-    Choice(0,
-      Sequence(T("NEWLINE"), T("TYPE_COMMENT")),
-      T("TYPE_COMMENT")
-    )
-  )
-);
-
-// --- React/TS integration exports --------------------------------------------
-
-export type SectionId = "starting" | "statements" | "simple_stmts" | "imports" | "compound" | "params" | "control" | "match" | "types" | "expressions" | "comparison" | "bitwise" | "arithmetic" | "primary" | "lambda" | "literals" | "collections" | "comprehensions" | "arguments" | "targets" | "typing";
-export type RuleName = string;
-
-export const SECTION_ORDER: SectionId[] = [
+// Section definitions for organized navigation
+export const SECTION_ORDER = [
   "starting",
   "statements",
   "simple_stmts",
   "imports",
   "compound",
   "params",
-  "control",
+  "control_if",
+  "control_while",
+  "control_for",
+  "control_with",
+  "control_try",
   "match",
   "types",
   "expressions",
@@ -1798,8 +2242,9 @@ export const SECTION_ORDER: SectionId[] = [
   "comprehensions",
   "arguments",
   "targets",
-  "typing"
-];
+] as const;
+
+export type SectionId = typeof SECTION_ORDER[number];
 
 export const SECTION_TITLES: Record<SectionId, string> = {
   starting: "Starting Rules",
@@ -1808,281 +2253,73 @@ export const SECTION_TITLES: Record<SectionId, string> = {
   imports: "Import Statements",
   compound: "Compound Statements",
   params: "Function Parameters",
-  control: "Control Flow (if/while/for/with/try)",
+  control_if: "If Statement",
+  control_while: "While Statement",
+  control_for: "For Statement",
+  control_with: "With Statement",
+  control_try: "Try Statement",
   match: "Pattern Matching",
   types: "Type Statements",
   expressions: "Expressions",
   comparison: "Comparison Operators",
   bitwise: "Bitwise Operators",
   arithmetic: "Arithmetic Operators",
-  primary: "Primary Elements",
-  lambda: "Lambda Functions",
-  literals: "Literals",
+  primary: "Primary Expressions",
+  lambda: "Lambda Expressions",
+  literals: "Literals & Strings",
   collections: "Collections",
-  comprehensions: "Comprehensions & Generators",
-  arguments: "Function Call Arguments",
+  comprehensions: "Comprehensions",
+  arguments: "Function Arguments",
   targets: "Assignment Targets",
-  typing: "Typing Elements"
 };
 
 export const SECTION_RULES: Record<SectionId, RuleName[]> = {
-  "starting": [
-    "file",
-    "interactive",
-    "eval",
-    "func_type"
-  ],
-  "statements": [
-    "statements",
-    "statement",
-    "statement_newline",
-    "simple_stmts",
-    "simple_stmt",
-    "compound_stmt"
-  ],
-  "simple_stmts": [
-    "assignment",
-    "annotated_rhs",
-    "augassign",
-    "return_stmt",
-    "raise_stmt",
-    "pass_stmt",
-    "break_stmt",
-    "continue_stmt",
-    "global_stmt",
-    "nonlocal_stmt",
-    "del_stmt",
-    "yield_stmt",
-    "assert_stmt"
-  ],
-  "imports": [
-    "import_stmt",
-    "import_name",
-    "import_from",
-    "import_from_targets",
-    "import_from_as_names",
-    "import_from_as_name",
-    "dotted_as_names",
-    "dotted_as_name",
-    "dotted_name"
-  ],
-  "compound": [
-    "block",
-    "decorators",
-    "class_def",
-    "class_def_raw",
-    "function_def",
-    "function_def_raw"
-  ],
-  "params": [
-    "params",
-    "parameters",
-    "slash_no_default",
-    "slash_with_default",
-    "star_etc",
-    "kwds",
-    "param_no_default",
-    "param_no_default_star_annotation",
-    "param_with_default",
-    "param_maybe_default",
-    "param",
-    "param_star_annotation",
-    "annotation",
-    "star_annotation",
-    "default"
-  ],
-  "control": [
-    "if_stmt",
-    "elif_stmt",
-    "else_block",
-    "while_stmt",
-    "for_stmt",
-    "with_stmt",
-    "with_item",
-    "try_stmt",
-    "except_block",
-    "except_star_block",
-    "finally_block"
-  ],
-  "match": [
-    "match_stmt",
-    "subject_expr",
-    "case_block",
-    "guard",
-    "patterns",
-    "pattern",
-    "as_pattern",
-    "or_pattern",
-    "closed_pattern",
-    "literal_pattern",
-    "literal_expr",
-    "complex_number",
-    "signed_number",
-    "signed_real_number",
-    "real_number",
-    "imaginary_number",
-    "capture_pattern",
-    "pattern_capture_target",
-    "wildcard_pattern",
-    "value_pattern",
-    "attr",
-    "name_or_attr",
-    "group_pattern",
-    "sequence_pattern",
-    "open_sequence_pattern",
-    "maybe_sequence_pattern",
-    "maybe_star_pattern",
-    "star_pattern",
-    "mapping_pattern",
-    "items_pattern",
-    "key_value_pattern",
-    "double_star_pattern",
-    "class_pattern",
-    "positional_patterns",
-    "keyword_patterns",
-    "keyword_pattern"
-  ],
-  "types": [
-    "type_alias",
-    "type_params",
-    "type_param_seq",
-    "type_param",
-    "type_param_bound",
-    "type_param_default",
-    "type_param_starred_default"
-  ],
-  "expressions": [
-    "expressions",
-    "expression",
-    "yield_expr",
-    "star_expressions",
-    "star_expression",
-    "star_named_expressions",
-    "star_named_expression",
-    "assignment_expression",
-    "named_expression",
-    "disjunction",
-    "conjunction",
-    "inversion"
-  ],
-  "comparison": [
-    "comparison",
-    "compare_op_bitwise_or_pair",
-    "eq_bitwise_or",
-    "noteq_bitwise_or",
-    "lte_bitwise_or",
-    "lt_bitwise_or",
-    "gte_bitwise_or",
-    "gt_bitwise_or",
-    "notin_bitwise_or",
-    "in_bitwise_or",
-    "isnot_bitwise_or",
-    "is_bitwise_or"
-  ],
-  "bitwise": [
-    "bitwise_or",
-    "bitwise_xor",
-    "bitwise_and",
-    "shift_expr"
-  ],
-  "arithmetic": [
-    "sum",
-    "term",
-    "factor",
-    "power"
-  ],
-  "primary": [
-    "await_primary",
-    "primary",
-    "slices",
-    "slice",
-    "atom",
-    "group"
-  ],
-  "lambda": [
-    "lambdef",
-    "lambda_params",
-    "lambda_parameters",
-    "lambda_slash_no_default",
-    "lambda_slash_with_default",
-    "lambda_star_etc",
-    "lambda_kwds",
-    "lambda_param_no_default",
-    "lambda_param_with_default",
-    "lambda_param_maybe_default",
-    "lambda_param"
-  ],
-  "literals": [
-    "fstring_middle",
-    "fstring_replacement_field",
-    "fstring_conversion",
-    "fstring_full_format_spec",
-    "fstring_format_spec",
-    "fstring",
-    "tstring_format_spec_replacement_field",
-    "tstring_format_spec",
-    "tstring_full_format_spec",
-    "tstring_replacement_field",
-    "tstring_middle",
-    "tstring",
-    "string",
-    "strings"
-  ],
-  "collections": [
-    "list",
-    "tuple",
-    "set",
-    "dict",
-    "double_starred_kvpairs",
-    "double_starred_kvpair",
-    "kvpair"
-  ],
-  "comprehensions": [
-    "for_if_clauses",
-    "for_if_clause",
-    "listcomp",
-    "setcomp",
-    "genexp",
-    "dictcomp"
-  ],
-  "arguments": [
-    "arguments",
-    "args",
-    "kwargs",
-    "starred_expression",
-    "kwarg_or_starred",
-    "kwarg_or_double_starred"
-  ],
-  "targets": [
-    "star_targets",
-    "star_targets_list_seq",
-    "star_targets_tuple_seq",
-    "star_target",
-    "target_with_star_atom",
-    "star_atom",
-    "single_target",
-    "single_subscript_attribute_target",
-    "t_primary",
-    "t_lookahead",
-    "del_targets",
-    "del_target",
-    "del_t_atom"
-  ],
-  "typing": [
-    "type_expressions",
-    "func_type_comment"
-  ]
+  starting: ["file", "interactive", "eval", "func_type"],
+  statements: ["statements", "statement", "single_compound_stmt", "statement_newline", "simple_stmts", "simple_stmt", "compound_stmt"],
+  simple_stmts: ["assignment", "annotated_rhs", "augassign", "return_stmt", "raise_stmt", "pass_stmt", "break_stmt", "continue_stmt", "global_stmt", "nonlocal_stmt", "del_stmt", "yield_stmt", "assert_stmt"],
+  imports: ["import_stmt", "import_name", "import_from", "import_from_targets", "import_from_as_names", "import_from_as_name", "dotted_as_names", "dotted_as_name", "dotted_name"],
+  compound: ["block", "decorators", "class_def", "class_def_raw", "function_def", "function_def_raw", "func_type_comment"],
+  params: ["params", "parameters", "slash_no_default", "slash_with_default", "star_etc", "kwds", "param_no_default", "param_no_default_star_annotation", "param_with_default", "param_maybe_default", "param", "param_star_annotation", "annotation", "star_annotation", "default"],
+  control_if: ["if_stmt", "elif_stmt", "else_block"],
+  control_while: ["while_stmt"],
+  control_for: ["for_stmt"],
+  control_with: ["with_stmt", "with_item"],
+  control_try: ["try_stmt", "except_block", "except_star_block", "finally_block"],
+  match: ["match_stmt", "subject_expr", "case_block", "guard", "patterns", "pattern", "as_pattern", "or_pattern", "closed_pattern", "literal_pattern", "literal_expr", "complex_number", "signed_number", "signed_real_number", "real_number", "imaginary_number", "capture_pattern", "pattern_capture_target", "wildcard_pattern", "value_pattern", "attr", "name_or_attr", "group_pattern", "sequence_pattern", "open_sequence_pattern", "maybe_sequence_pattern", "maybe_star_pattern", "star_pattern", "mapping_pattern", "items_pattern", "key_value_pattern", "double_star_pattern", "class_pattern", "positional_patterns", "keyword_patterns", "keyword_pattern"],
+  types: ["type_alias", "type_params", "type_param_seq", "type_param", "type_param_bound", "type_param_default", "type_param_starred_default", "type_expressions"],
+  expressions: ["expression", "expressions", "yield_expr", "star_expressions", "star_expression", "star_named_expressions", "star_named_expression", "assignment_expression", "named_expression", "disjunction", "conjunction", "inversion"],
+  comparison: ["comparison", "compare_op_bitwise_or_pair", "eq_bitwise_or", "noteq_bitwise_or", "lte_bitwise_or", "lt_bitwise_or", "gte_bitwise_or", "gt_bitwise_or", "notin_bitwise_or", "in_bitwise_or", "isnot_bitwise_or", "is_bitwise_or"],
+  bitwise: ["bitwise_or", "bitwise_xor", "bitwise_and", "shift_expr"],
+  arithmetic: ["sum", "term", "factor", "power"],
+  primary: ["await_primary", "primary", "slices", "slice", "atom", "group"],
+  lambda: ["lambdef", "lambda_params", "lambda_parameters", "lambda_slash_no_default", "lambda_slash_with_default", "lambda_star_etc", "lambda_kwds", "lambda_param_no_default", "lambda_param_with_default", "lambda_param_maybe_default", "lambda_param"],
+  literals: ["strings", "string", "fstring", "fstring_middle", "fstring_replacement_field", "fstring_conversion", "fstring_full_format_spec", "fstring_format_spec", "tstring", "tstring_middle", "tstring_replacement_field", "tstring_full_format_spec", "tstring_format_spec", "tstring_format_spec_replacement_field"],
+  collections: ["list", "tuple", "set", "dict", "double_starred_kvpairs", "double_starred_kvpair", "kvpair"],
+  comprehensions: ["for_if_clauses", "for_if_clause", "listcomp", "setcomp", "genexp", "dictcomp"],
+  arguments: ["arguments", "args", "kwargs", "starred_expression", "kwarg_or_starred", "kwarg_or_double_starred"],
+  targets: ["star_targets", "star_targets_list_seq", "star_targets_tuple_seq", "star_target", "target_with_star_atom", "star_atom", "single_target", "single_subscript_attribute_target", "t_primary", "t_lookahead", "del_targets", "del_target", "del_t_atom"],
 };
 
-// Expose safe accessors for React UI.
-export function getRuleFactory(name: RuleName): (() => any) | undefined {
-  return rules.get(name);
+/**
+ * Get all rule names
+ */
+export function getRuleNames(): RuleName[] {
+  return Array.from(rules.keys());
 }
 
-export function createRuleDiagram(name: RuleName): any {
-  const factory = rules.get(name);
-  if (!factory) {
-    return Diagram(Comment(`No factory defined for ${name}`));
-  }
-  return factory();
+/**
+ * Create a diagram for a given rule name
+ */
+export function createRuleDiagram(ruleName: RuleName): ReturnType<typeof Diagram> | null {
+  const factory = rules.get(ruleName);
+  return factory ? factory() : null;
 }
+
+/**
+ * Check if a rule exists
+ */
+export function hasRule(ruleName: RuleName): boolean {
+  return rules.has(ruleName);
+}
+
+export default rules;

@@ -18,3 +18,7 @@ jobs:
         uses: actions/dependency-review-action@v4
         with:
           fail-on-severity: moderate
+          # Optional: block known-problem licenses if you have a policy
+          # deny-licenses: GPL-3.0, AGPL-3.0
+          # Optional: only warn (do not fail) on license issues
+          # fail-on-scopes: runtime
